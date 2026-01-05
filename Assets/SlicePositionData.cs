@@ -32,9 +32,10 @@ public class SlicePositionData
 
             this.Positions.AddRange(curData.Positions);
         }
+        this.Positions = this.Positions.Distinct().ToList();
     }
 
-    public bool CanMakeShape(List<SlicePositionData> slices, out List<SlicePositionData> requiredSlices)
+    public bool CanMakeShape(IEnumerable<SlicePositionData> slices, out List<SlicePositionData> requiredSlices)
     {
         // No slice that involves a piece not in this set can be used
         // We must be able to make this shape completely
@@ -43,13 +44,10 @@ public class SlicePositionData
 
         for (int ii = possibleUsefulSlices.Count - 1; ii >= 0; ii--)
         {
-            foreach (Vector2Int position in possibleUsefulSlices[ii].Positions)
+            SlicePositionData curSlice = possibleUsefulSlices[ii];
+            if (!CanBePotentiallyUseful(curSlice))
             {
-                if (!this.Positions.Contains(position))
-                {
-                    possibleUsefulSlices.RemoveAt(ii);
-                    break;
-                }
+                possibleUsefulSlices.RemoveAt(ii);
             }
         }
 
@@ -97,6 +95,19 @@ public class SlicePositionData
         return true;
     }
 
+    public bool CanBePotentiallyUseful(SlicePositionData slice)
+    {
+        foreach (Vector2Int position in slice.Positions)
+        {
+            if (!this.Positions.Contains(position))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public bool ContainsAll(SlicePositionData other)
     {
         if (this.Positions.Count == 0)
@@ -104,7 +115,30 @@ public class SlicePositionData
             return false;
         }
 
+        if (this.Positions.Count < other.Positions.Count)
+        {
+            return false;
+        }
+
         foreach (Vector2Int coordinate in other.Positions)
+        {
+            if (!this.Positions.Contains(coordinate))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public bool ContainsAll(List<Vector2Int> other)
+    {
+        if (this.Positions.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (Vector2Int coordinate in other)
         {
             if (!this.Positions.Contains(coordinate))
             {

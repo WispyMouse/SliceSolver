@@ -40,7 +40,8 @@ public class SliceSolver : MonoBehaviour
             }
         });
 
-        List<SlicePositionData> reducedPairedList = ReduceToPairedPositions(allFundamentals, problemsToSolve);
+        List<SlicePositionData> distinctFundementals = RemoveIdenticalSlices(allFundamentals);
+        List<SlicePositionData> reducedPairedList = ReduceToPairedPositions(distinctFundementals, problemsToSolve);
         this.TagUnbreakableFundamentals(reducedPairedList, problemsToSolve);
 
         // We know the fundamental parts that must exist, so strip those elements from other sets
@@ -52,6 +53,8 @@ public class SliceSolver : MonoBehaviour
         {
             PresentResults(solvedList, problemsToSolve, sliceSolutions);
         }
+
+        Debug.Log($"Program complete");
     }
 
     public bool CanMakeAllShapes(List<SlicePositionData> slicesToMake, List<SlicePositionData> parts, out Dictionary<SlicePositionData, List<SlicePositionData>> sliceToSolutions)
@@ -118,38 +121,51 @@ public class SliceSolver : MonoBehaviour
     /// </summary>
     public List<SlicePositionData> ReduceToPairedPositions(List<SlicePositionData> allFundamentals, List<SlicePositionData> toSolve)
     {
+        Debug.Log($"Beginning linking of all fundamentals, size {allFundamentals.Count}");
+
         List<SlicePositionData> currentLinkedPieces = new List<SlicePositionData>();
         foreach (SlicePositionData fundamental in allFundamentals)
         {
-            bool alwaysPresentSeeded = false;
-            List<Vector2Int> alwaysPresentCoordinates = new List<Vector2Int>();
-            List<SlicePositionData> potentialLinks = new List<SlicePositionData>();
+            List<SlicePositionData> problemsInvolvingFundamental = new List<SlicePositionData>(toSolve);
+            for (int ii = toSolve.Count - 1; ii >= 0; ii--)
+            {
+                if (!toSolve[ii].ContainsAll(fundamental))
+                {
+                    problemsInvolvingFundamental.RemoveAt(ii);
+                }
+            }
 
-            foreach (SlicePositionData curToSolve in toSolve)
+            HashSet<Vector2Int> allPositionsInProblems = new HashSet<Vector2Int>();
+            foreach (SlicePositionData position in problemsInvolvingFundamental)
+            {
+                allPositionsInProblems.UnionWith(position.Positions);
+            }
+
+            List<Vector2Int> alwaysPresentCoordinates = new List<Vector2Int>(allPositionsInProblems);
+
+            Debug.Log($"For the fundemental {fundamental}, there are {allPositionsInProblems.Count} positions in problems involving this fundemental");
+
+            foreach (SlicePositionData curToSolve in problemsInvolvingFundamental)
             {
                 if (!curToSolve.ContainsAll(fundamental))
                 {
                     continue;
                 }
 
-                if (!alwaysPresentSeeded)
+                // Take this problem that involves this coordinate,
+                // and remove everything from our list of all coordinates that are not present in this problem
+                // In the end we'll be left with a list that only contains linked items
+                for (int ii = alwaysPresentCoordinates.Count - 1; ii >= 0; ii--)
                 {
-                    // If this is our first matching slice, add everything present
-                    alwaysPresentSeeded = true;
-                    alwaysPresentCoordinates = new List<Vector2Int>(curToSolve.Positions);
-                }
-                else
-                {
-                    // Otherwise, remove everything *not* present
-                    for (int ii = alwaysPresentCoordinates.Count - 1; ii >= 0; ii--)
+                    Vector2Int thisCoordinate = alwaysPresentCoordinates[ii];
+                    if (!curToSolve.Positions.Contains(thisCoordinate))
                     {
-                        if (!curToSolve.Positions.Contains(alwaysPresentCoordinates[ii]))
-                        {
-                            alwaysPresentCoordinates.RemoveAt(ii);
-                        }
+                        alwaysPresentCoordinates.RemoveAt(ii);
                     }
                 }
             }
+
+            Debug.Log($"For the fundemental {fundamental}, there appear to be {alwaysPresentCoordinates.Count} coordinates that always appear when it does");
 
             if (alwaysPresentCoordinates.Count == 0)
             {
@@ -157,16 +173,40 @@ public class SliceSolver : MonoBehaviour
                 continue;
             }
 
-            // Now that we have 
+            // For each always present coordinate, ensure that every place it shows up, the base fundamental shows up
+            for (int ii = alwaysPresentCoordinates.Count - 1; ii >= 0; ii--)
+            {
+                Vector2Int currentCoordinate = alwaysPresentCoordinates[ii];
+
+                // If this coordinate is part of the fundamental, it should always be linked to itself
+                if (fundamental.Positions.Contains(currentCoordinate))
+                {
+                    continue;
+                }
+
+                foreach (SlicePositionData curToSolve in toSolve)
+                {
+                    // If this slice contains the fundamental, but not the current slice we're trying to add,
+                    // then this fundamental must not actually be linked to this slice
+                    if (curToSolve.ContainsAll(fundamental) != curToSolve.Positions.Contains(currentCoordinate))
+                    {
+                        Debug.Log($"Fundamental {fundamental} appeared to be linked to {currentCoordinate}, but it wasn't actually present in {curToSolve}. Removing link.");
+                        alwaysPresentCoordinates.RemoveAt(ii);
+                        break;
+                    }
+                }
+            }
 
             // Whatever coordinates remain, these must be tied coordinates
-            SlicePositionData linked = new SlicePositionData() { BaseColor = fundamental.BaseColor, Positions = alwaysPresentCoordinates };
+            SlicePositionData linked = new SlicePositionData() {  Positions = alwaysPresentCoordinates, BaseColor = fundamental.BaseColor };
             if (!linked.IsAlreadyInList(currentLinkedPieces))
             {
-                potentialLinks.Add(linked);
+                Debug.Log($"Linking {fundamental} to {linked}");
                 currentLinkedPieces.Add(linked);
             }
         }
+
+        Debug.Log($"After linking, {currentLinkedPieces.Count} linked pieces remain.");
 
         return currentLinkedPieces;
     }
@@ -197,7 +237,6 @@ public class SliceSolver : MonoBehaviour
 
         List<SlicePositionData> unbreakableSlices = new List<SlicePositionData>();
         List<SlicePositionData> breakableSlices = new List<SlicePositionData>();
-        Dictionary<SlicePositionData, List<SlicePositionData>> solveToSolutionIterationPieces = new Dictionary<SlicePositionData, List<SlicePositionData>>();
 
         await Task.Run(() =>
         {
@@ -217,56 +256,23 @@ public class SliceSolver : MonoBehaviour
             }
         });
 
-        // Take every other breakable piece, and find all possible combination of pieces involving itself
-        // Note every combination that results in solveable pieces
-        for (int ii = 0; ii < breakableSlices.Count; ii++)
+        foreach (SlicePositionData problemToSolve in toSolve)
         {
-            SlicePositionData curRoot = breakableSlices[ii];
-
-            List<SlicePositionData> slicesWithoutMe = new List<SlicePositionData>(pairedFundamentals);
-            slicesWithoutMe.Remove(curRoot);
-
-            List<List<SlicePositionData>> allPossibleCombinationsWithoutMe = GetAllSubsets<SlicePositionData>(slicesWithoutMe).ToList();
-            Debug.Log($"All possible combinations excluding {curRoot} is {allPossibleCombinationsWithoutMe.Count} long.");
-            int solutionsFound = 0;
-
-            foreach (List<SlicePositionData> possibleCombination in allPossibleCombinationsWithoutMe)
+            if (problemToSolve.CanMakeShape(breakableSlices, out List<SlicePositionData> usedSlices))
             {
-                List<SlicePositionData> subList = new List<SlicePositionData>(possibleCombination);
-                subList.Insert(0, curRoot);
-
-                foreach (SlicePositionData curToSolve in toSolve)
-                {
-                    if (curToSolve.CanMakeShape(subList, out List<SlicePositionData> requiredSlices))
-                    {
-                        if (!solveToSolutionIterationPieces.TryGetValue(curToSolve, out List<SlicePositionData> pieces))
-                        {
-                            pieces = new List<SlicePositionData>();
-                            solveToSolutionIterationPieces.Add(curToSolve, pieces);
-                        }
-
-                        SlicePositionData subset = new SlicePositionData(subList);
-                        pieces.Add(subset);
-                        sliceSolutions.Add(subset);
-                        solutionsFound++;
-                    }
-                }
+                SlicePositionData composite = new SlicePositionData(usedSlices);
+                sliceSolutions.Add(composite);
             }
-
-            Debug.Log($"{curRoot} found {solutionsFound} using it");
         }
 
         // We now have every possible solution for every possible entry
-        // Let's trim it down, it is sure to have lots of redundant things
-        sliceSolutions = RemoveIdenticalSlices(sliceSolutions);
-        // sliceSolutions = ReduceToPairedPositions(sliceSolutions, toSolve);
-
         // Check to see if we can prune any combination that can be made with other combination pieces
-        // sliceSolutions = ReduceRedundantSlices(sliceSolutions);
-        // sliceSolutions = FilterForIdenticalSolvers(sliceSolutions, toSolve);
+        sliceSolutions = RemoveIdenticalSlices(sliceSolutions);
+        sliceSolutions = ReduceRedundantSlices(sliceSolutions);
+        sliceSolutions = FilterForIdenticalSolvers(sliceSolutions, toSolve);
 
         // Take any completely overlapping slices and reduce them
-        // sliceSolutions = ReduceOverlappingSlices(sliceSolutions);
+        sliceSolutions = ReduceOverlappingSlices(sliceSolutions, toSolve);
 
         return sliceSolutions;
     }
@@ -329,7 +335,7 @@ public class SliceSolver : MonoBehaviour
         return remainingPositions;
     }
 
-    List<SlicePositionData> RemoveIdenticalSlices(List<SlicePositionData> toTrim)
+    public static List<SlicePositionData> RemoveIdenticalSlices(List<SlicePositionData> toTrim)
     {
         List<SlicePositionData> remaining = new List<SlicePositionData>(toTrim);
 
@@ -348,7 +354,7 @@ public class SliceSolver : MonoBehaviour
                 if (comparisonSlice.Positions.Count == thisSlice.Positions.Count && comparisonSlice.ContainsAll(thisSlice))
                 {
                     // This is an identical slice! Remove it, retaining the other copy
-                    Debug.Log($"Found an identical copy of {comparisonSlice}; culling");
+                    // Debug.Log($"Found an identical copy of {comparisonSlice}; culling");
                     remaining.RemoveAt(ii);
                     break;
                 }
@@ -363,7 +369,6 @@ public class SliceSolver : MonoBehaviour
         List<SlicePositionData> necessarySlices = new List<SlicePositionData>();
         List<SlicePositionData> remainingSlices = new List<SlicePositionData>(solutionSlices);
 
-
         bool anythingChanged = false;
         do
         {
@@ -372,27 +377,35 @@ public class SliceSolver : MonoBehaviour
             for (int ii = remainingSlices.Count - 1; ii >= 0; ii--)
             {
                 SlicePositionData mySlice = remainingSlices[ii];
-                List<SlicePositionData> slicesWithoutMe = new List<SlicePositionData>(remainingSlices);
-                slicesWithoutMe.Remove(mySlice);
 
-                bool canMakeShapeWithOtherShapes = false;
-                List<List<SlicePositionData>> allPossibleCombinationsWithoutMe = GetAllSubsets<SlicePositionData>(slicesWithoutMe).ToList();
-                foreach (List<SlicePositionData> curSubset in allPossibleCombinationsWithoutMe)
+                // Find every slice that this overlaps entirely
+                List<SlicePositionData> encompassedSlices = new List<SlicePositionData>();
+                for (int jj = 0; jj < remainingSlices.Count; jj++)
                 {
-                    if (mySlice.CanMakeShape(curSubset, out _))
+                    if (ii == jj)
                     {
-                        Debug.Log($"Can make {mySlice} with composite parts, marking as not necessary.");
-                        canMakeShapeWithOtherShapes = true;
-                        anythingChanged = true;
-                        remainingSlices.RemoveAt(ii);
-                        break;
+                        continue;
+                    }
+
+                    SlicePositionData subSlice = remainingSlices[jj];
+                    if (mySlice.ContainsAll(subSlice))
+                    {
+                        encompassedSlices.Add(subSlice);
                     }
                 }
 
-                if (!canMakeShapeWithOtherShapes)
+                // If there are any encompassed slices, can we make this shape with them?
+                if (mySlice.CanMakeShape(encompassedSlices, out List<SlicePositionData> usedSlices))
                 {
-                    necessarySlices.Add(mySlice);
+                    // Yes! That means this can be removed
+                    Debug.Log($"Can make {mySlice} with composite parts, marking as not necessary.");
+                    anythingChanged = true;
+                    remainingSlices.RemoveAt(ii);
+                    break;
                 }
+
+                // If we got here, we can't make this out of other parts
+                necessarySlices.Add(mySlice);
             }
         } while (anythingChanged);
 
@@ -470,11 +483,10 @@ public class SliceSolver : MonoBehaviour
     /// This helps where a slice would completely eclipse another; that's a sign that we have a redundant part.
     /// Doing multiple iterations will result in eroding the dataset down to fundamental parts, so run carefully.
     /// </summary>
-    public static List<SlicePositionData> ReduceOverlappingSlices(List<SlicePositionData> slices)
+    public static List<SlicePositionData> ReduceOverlappingSlices(List<SlicePositionData> slices, List<SlicePositionData> toSolve)
     {
         List<SlicePositionData> reduced = new List<SlicePositionData>();
         List<SlicePositionData> remaining = new List<SlicePositionData>(slices);
-
 
         bool anythingChanged = false;
         do
@@ -489,7 +501,7 @@ public class SliceSolver : MonoBehaviour
                 SlicePositionData thisSlice = remaining[ii];
 
                 // For the sub list, traverse smallest to largest
-                for (int jj = remaining.Count - 1; jj >= 0; jj--)
+                for (int jj = 0; jj < remaining.Count; jj++)
                 {
                     if (ii == jj)
                     {
@@ -498,9 +510,9 @@ public class SliceSolver : MonoBehaviour
 
                     SlicePositionData subSlice = remaining[jj];
 
-                    if (thisSlice.Positions.Count < subSlice.Positions.Count)
+                    if (thisSlice.Positions.Count <= subSlice.Positions.Count)
                     {
-                        // Can't possibly overlap if this is smaller
+                        // Can't possibly overlap if this is smaller or the same size
                         continue;
                     }
 
@@ -516,28 +528,61 @@ public class SliceSolver : MonoBehaviour
                     // then we can remove the smaller slice
                     // So get every problem to solve that includes this larger and this smaller slice
 
-                    // This slice overlaps this sub slice, so remove its overlapping parts
-                    Debug.Log($"Removing redundant overlapping slice parts from {thisSlice} ({thisSlice.Positions.Count} coordinates) by cutting out {subSlice} ({subSlice.Positions.Count} coordinates)");
-                    foreach (Vector2Int position in subSlice.Positions)
-                    {
-                        thisSlice.Positions.Remove(position);
-                    }
-                    anythingChanged = true;
-                }
+                    List<SlicePositionData> problemsToSolveInvolvingOuterSlice = new List<SlicePositionData>();
+                    List<SlicePositionData> problemsToSolveInvolvingSubSlice = new List<SlicePositionData>();
 
-                if (thisSlice.Positions.Count > 0)
-                {
-                    reduced.Add(thisSlice);
-                }
-                else
-                {
-                    Debug.Log($"Slice has been pruned of all coordinates, leaving it empty. Removing.");
-                    remaining.RemoveAt(ii);
+                    foreach (SlicePositionData problem in toSolve)
+                    {
+                        if (problem.ContainsAll(subSlice))
+                        {
+                            problemsToSolveInvolvingSubSlice.Add(problem);
+                        }
+
+                        if (problem.ContainsAll(thisSlice))
+                        {
+                            problemsToSolveInvolvingOuterSlice.Add(problem);
+                        }
+                    }
+
+                    if (problemsToSolveInvolvingOuterSlice.Count == problemsToSolveInvolvingSubSlice.Count)
+                    {
+                        // If these are all used on the same problems, we can trim the *smaller* slice
+                        Debug.Log($"{thisSlice} is used in all of the same problems as {subSlice}, so retaining the larger slice.");
+                        remaining.Remove(subSlice);
+                        reduced.Add(thisSlice);
+                    }
+                    else
+                    {
+                        // Otherwise, trim the larger one to remove the smaller one's elements
+                        Debug.Log($"Removing redundant overlapping slice parts from {thisSlice} ({thisSlice.Positions.Count} coordinates) by cutting out {subSlice} ({subSlice.Positions.Count} coordinates)");
+                        foreach (Vector2Int position in subSlice.Positions)
+                        {
+                            thisSlice.Positions.Remove(position);
+                        }
+
+                        if (thisSlice.Positions.Count > 0)
+                        {
+                            reduced.Add(thisSlice);
+                        }
+                        else
+                        {
+                            remaining.Remove(thisSlice);
+                        }
+                    }
+
+                    anythingChanged = true;
+                    break;
                 }
 
                 if (anythingChanged)
                 {
+                    remaining = RemoveIdenticalSlices(remaining);
                     break;
+                }
+                else
+                {
+                    // Nothing changed, so this must be a good fit
+                    reduced.Add(thisSlice);
                 }
             }
         } while (anythingChanged);
@@ -545,16 +590,16 @@ public class SliceSolver : MonoBehaviour
         return reduced;
     }
 
-    public static IEnumerable<List<T>> GetAllSubsets<T>(List<T> source)
+    public static IEnumerable<T[]> GetAllSubsets<T>(List<T> source)
     {
         // Shamefully stolen from Google's AI solver
+        // WARNING: BREAKS WITH SET SIZES OF SIZE 32 OR GREATER
         // 1 << source.Count calculates 2^n efficiently
-        for (var i = 0; i < (1 << source.Count); i++)
+        for (int i = 0; i < (1 << source.Count); i++)
         {
             yield return source
                 .Where((t, j) => (i & (1 << j)) != 0) // Check if the j-th bit is set in i
-                .ToArray()
-                .ToList();
+                .ToArray();
         }
     }
 }
