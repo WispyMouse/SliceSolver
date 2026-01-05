@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 
 public class PreprogrammedSliceManager : MonoBehaviour
@@ -15,7 +16,7 @@ public class PreprogrammedSliceManager : MonoBehaviour
         this.SliceVisualizerPF.gameObject.SetActive(false);
     }
 
-    void Start()
+    async void Start()
     {
         foreach (SlicePositionData preprogrammedPositionSet in this.PreprogrammedPositions)
         {
@@ -25,6 +26,6 @@ public class PreprogrammedSliceManager : MonoBehaviour
             newVisualizer.gameObject.SetActive(true);
         }
 
-        this.Solver.StartSolvingForSlices(this.PreprogrammedPositions);
+        await this.Solver.StartSolvingForSlices(this.PreprogrammedPositions);
     }
 }

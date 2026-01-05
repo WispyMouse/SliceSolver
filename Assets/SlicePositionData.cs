@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
@@ -10,6 +11,28 @@ public class SlicePositionData
     public List<Vector2Int> Positions;
 
     public Color BaseColor;
+    public bool UnbreakableFundamental { get; set; } = false;
+
+    public SlicePositionData()
+    {
+
+    }
+
+    public SlicePositionData(List<SlicePositionData> superSet)
+    {
+        this.Positions = new List<Vector2Int>();
+        bool colorSet = false;
+        foreach (SlicePositionData curData in superSet)
+        {
+            if (!colorSet)
+            {
+                colorSet = true;
+                this.BaseColor = curData.BaseColor;
+            }
+
+            this.Positions.AddRange(curData.Positions);
+        }
+    }
 
     public bool CanMakeShape(List<SlicePositionData> slices, out List<SlicePositionData> requiredSlices)
     {
@@ -52,14 +75,35 @@ public class SlicePositionData
             return false;
         }
 
-        // Now that we know it's possible, make the most efficient arrangement
-        // ...wip
         requiredSlices = possibleUsefulSlices;
+        return true;
+    }
+
+    public bool CanMakeShape(SlicePositionData slice)
+    {
+        if (slice.Positions.Count != this.Positions.Count)
+        {
+            return false;
+        }
+
+        foreach (Vector2Int position in slice.Positions)
+        {
+            if (!this.Positions.Contains(position))
+            {
+                return false;
+            }
+        }
+
         return true;
     }
 
     public bool ContainsAll(SlicePositionData other)
     {
+        if (this.Positions.Count == 0)
+        {
+            return false;
+        }
+
         foreach (Vector2Int coordinate in other.Positions)
         {
             if (!this.Positions.Contains(coordinate))
@@ -90,5 +134,19 @@ public class SlicePositionData
         }
 
         return false;
+    }
+
+    public override string ToString()
+    {
+        StringBuilder coordinateString = new StringBuilder();
+        coordinateString.Append("{");
+
+        foreach (Vector2Int coordinate in this.Positions)
+        {
+            coordinateString.Append($"({coordinate.x},{coordinate.y})");
+        }
+
+        coordinateString.Append("}");
+        return coordinateString.ToString();
     }
 }
