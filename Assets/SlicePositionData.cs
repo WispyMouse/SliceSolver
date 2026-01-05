@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
@@ -55,5 +56,39 @@ public class SlicePositionData
         // ...wip
         requiredSlices = possibleUsefulSlices;
         return true;
+    }
+
+    public bool ContainsAll(SlicePositionData other)
+    {
+        foreach (Vector2Int coordinate in other.Positions)
+        {
+            if (!this.Positions.Contains(coordinate))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public bool IsAlreadyInList(List<SlicePositionData> existing)
+    {
+        foreach (SlicePositionData curExisting in existing)
+        {
+            if (curExisting.Positions.Count != this.Positions.Count)
+            {
+                continue;
+            }
+
+            // If this position list has anything not in the target position list, we must not be identical
+            if (this.Positions.Except(curExisting.Positions).Any())
+            {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
     }
 }

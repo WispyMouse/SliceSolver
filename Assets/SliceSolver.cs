@@ -34,28 +34,11 @@ public class SliceSolver : MonoBehaviour
             allFundamentals.Add(new SlicePositionData() { Positions = new List<Vector2Int>() { fundamental } });
         }
 
-        for (int ii = 0; ii < allFundamentals.Count; ii++)
-        {
-            SlicePositionData preprogrammedSet = allFundamentals[ii];
-            preprogrammedSet.BaseColor = GetCandidateColor(ii);
-            SliceVisualizer newVisualizer = Instantiate(this.SliceVisualizerPF, this.transform);
-            newVisualizer.VisualizeList(preprogrammedSet, this.CoordinatePositionMultiplier);
-            newVisualizer.gameObject.SetActive(true);
-        }
+        List<SlicePositionData> reducedPairedList = ReduceToPairedPositions(allFundamentals, slices);
 
-        if (CanMakeAllShapes(slices, allFundamentals, out Dictionary<SlicePositionData, List<SlicePositionData>> sliceSolutions))
+        if (CanMakeAllShapes(slices, reducedPairedList, out Dictionary<SlicePositionData, List<SlicePositionData>> sliceSolutions))
         {
-            foreach (SlicePositionData toSolve in slices)
-            {
-                SliceVisualizer newVisualizer = Instantiate(this.SliceVisualizerPF, IntegratedSolutionsRoot);
-                newVisualizer.VisualizeList(toSolve, this.CoordinatePositionMultiplier);
-                newVisualizer.gameObject.SetActive(true);
-
-                foreach (SlicePositionData solutionPiece in sliceSolutions[toSolve])
-                {
-                    newVisualizer.IntegrateSolution(solutionPiece);
-                }
-            }
+            PresentResults(reducedPairedList, slices, sliceSolutions);
         }
     }
 
@@ -86,5 +69,85 @@ public class SliceSolver : MonoBehaviour
         }
 
         return this.CandidateColors[Mathf.Max(0, index % this.CandidateColors.Count)];
+    }
+
+    public void PresentResults(List<SlicePositionData> solutionSlices, List<SlicePositionData> slicesToSolve, Dictionary<SlicePositionData, List<SlicePositionData>> sliceSolutions)
+    {
+        for (int ii = 0; ii < solutionSlices.Count; ii++)
+        {
+            SlicePositionData solutionSet = solutionSlices[ii];
+            solutionSet.BaseColor = GetCandidateColor(ii);
+            SliceVisualizer newVisualizer = Instantiate(this.SliceVisualizerPF, this.transform);
+            newVisualizer.VisualizeList(solutionSet, this.CoordinatePositionMultiplier);
+            newVisualizer.gameObject.SetActive(true);
+        }
+
+        foreach (SlicePositionData toSolve in slicesToSolve)
+        {
+            SliceVisualizer newVisualizer = Instantiate(this.SliceVisualizerPF, IntegratedSolutionsRoot);
+            newVisualizer.VisualizeList(toSolve, this.CoordinatePositionMultiplier);
+            newVisualizer.gameObject.SetActive(true);
+
+            foreach (SlicePositionData solutionPiece in sliceSolutions[toSolve])
+            {
+                newVisualizer.IntegrateSolution(solutionPiece);
+            }
+        }
+    }
+
+    /// <summary>
+    // Looking at every fundamental and every position to solve, are there any elements that are *always* tied together?
+    // If we can identify any pieces that are always linked, we can reduce the amount of fundamental pieces
+    // This filter is helpful for reconciling things like the "-" in the middle of an "8", which are two pieces always found together
+    /// </summary>
+    public List<SlicePositionData> ReduceToPairedPositions(List<SlicePositionData> allFundamentals, List<SlicePositionData> toSolve)
+    {
+        List<SlicePositionData> currentLinkedPieces = new List<SlicePositionData>();
+        foreach (SlicePositionData fundamental in allFundamentals)
+        {
+            bool alwaysPresentSeeded = false;
+            List<Vector2Int> alwaysPresentCoordinates = new List<Vector2Int>();
+
+            foreach (SlicePositionData curToSolve in toSolve)
+            {
+                if (!curToSolve.ContainsAll(fundamental))
+                {
+                    continue;
+                }
+
+                if (!alwaysPresentSeeded)
+                {
+                    // If this is our first matching slice, add everything present
+                    alwaysPresentSeeded = true;
+                    alwaysPresentCoordinates = new List<Vector2Int>(curToSolve.Positions);
+                }
+                else
+                {
+                    // Otherwise, remove everything *not* present
+                    for (int ii = alwaysPresentCoordinates.Count - 1; ii >= 0; ii--)
+                    {
+                        if (!curToSolve.Positions.Contains(alwaysPresentCoordinates[ii]))
+                        {
+                            alwaysPresentCoordinates.RemoveAt(ii);
+                        }
+                    }
+                }
+            }
+
+            if (alwaysPresentCoordinates.Count == 0)
+            {
+                Debug.LogError($"Somehow, a fundamental isn't present in anything. That's odd!");
+                continue;
+            }
+
+            // Whatever coordinates remain, these must be tied coordinates
+            SlicePositionData linked = new SlicePositionData() { BaseColor = fundamental.BaseColor, Positions = alwaysPresentCoordinates };
+            if (!linked.IsAlreadyInList(currentLinkedPieces))
+            {
+                currentLinkedPieces.Add(linked);
+            }
+        }
+
+        return currentLinkedPieces;
     }
 }
