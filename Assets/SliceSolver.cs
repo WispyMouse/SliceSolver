@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using TMPro;
+using Unity.VisualScripting;
 using UnityEditor.ShaderGraph.Internal;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -42,10 +43,6 @@ public class SliceSolver : MonoBehaviour
 
         List<SlicePositionData> distinctFundementals = RemoveIdenticalSlices(allFundamentals);
         List<SlicePositionData> reducedPairedList = ReduceToPairedPositions(distinctFundementals, problemsToSolve);
-        this.TagUnbreakableFundamentals(reducedPairedList, problemsToSolve);
-
-        // We know the fundamental parts that must exist, so strip those elements from other sets
-        reducedPairedList = RemoveUnbreakableFundamentals(reducedPairedList);
 
         List<SlicePositionData> solvedList = await SolveAsync(reducedPairedList, problemsToSolve);
 
@@ -211,57 +208,35 @@ public class SliceSolver : MonoBehaviour
         return currentLinkedPieces;
     }
 
-    /// <summary>
-    /// Iterate over every paired fundamental, and tag the ones that have something to solve that *exactly* matches that fundamental.
-    /// This informs that we can't possibly optimize out that one.
-    /// </summary>
-    public void TagUnbreakableFundamentals(List<SlicePositionData> pairedFundamentals, List<SlicePositionData> toSolve)
-    {
-        foreach (SlicePositionData pairedFundamental in pairedFundamentals)
-        {
-            foreach (SlicePositionData curToSolve in toSolve)
-            {
-                if (curToSolve.CanMakeShape(pairedFundamental))
-                {
-                    Debug.Log($"{pairedFundamental} is marked as an unbreakable fundamental.");
-                    pairedFundamental.UnbreakableFundamental = true;
-                    break;
-                }
-            }
-        }
-    }
-
     public async Task<List<SlicePositionData>> SolveAsync(List<SlicePositionData> pairedFundamentals, List<SlicePositionData> toSolve)
     {
         List<SlicePositionData> sliceSolutions = new List<SlicePositionData>();
 
-        List<SlicePositionData> unbreakableSlices = new List<SlicePositionData>();
-        List<SlicePositionData> breakableSlices = new List<SlicePositionData>();
-
-        await Task.Run(() =>
-        {
-            for (int ii = pairedFundamentals.Count - 1; ii >= 0; ii--)
-            {
-                if (pairedFundamentals[ii].UnbreakableFundamental)
-                {
-                    unbreakableSlices.Add(pairedFundamentals[ii]);
-
-                    // We know our best solution will include all fundamentals
-                    sliceSolutions.Add(pairedFundamentals[ii]);
-                }
-                else
-                {
-                    breakableSlices.Add(pairedFundamentals[ii]);
-                }
-            }
-        });
-
         foreach (SlicePositionData problemToSolve in toSolve)
         {
-            if (problemToSolve.CanMakeShape(breakableSlices, out List<SlicePositionData> usedSlices))
+            if (problemToSolve.CanMakeShape(pairedFundamentals, out List<SlicePositionData> usedSlices))
             {
-                SlicePositionData composite = new SlicePositionData(usedSlices);
-                sliceSolutions.Add(composite);
+                // We now know that each of these slices can be useful
+                // Break each of these slices in to every combination that can still make this shape
+                List<SlicePositionData> allUsefulSolutionsToProblem = new List<SlicePositionData>();
+                List<SlicePositionData> solutionCompositePermutations = new List<SlicePositionData>();
+
+                foreach (IEnumerable<SlicePositionData> possibleCombination in GeneratePermutations<SlicePositionData>(usedSlices.ToArray()))
+                {
+                    solutionCompositePermutations.Add(new SlicePositionData(possibleCombination));
+                }
+
+                solutionCompositePermutations = RemoveIdenticalSlices(solutionCompositePermutations);
+
+                if (problemToSolve.CanMakeShape(solutionCompositePermutations, out List<SlicePositionData> usefulSliceConcepts))
+                {
+                    sliceSolutions.AddRange(usefulSliceConcepts);
+                }
+
+                // Iterate over each of the solutions, checking for overlapping values
+                // Reduce to the smallest set
+                // allUsefulSolutionsToProblem = ReduceOverlappingSlices(allUsefulSolutionsToProblem, toSolve);
+                sliceSolutions.AddRange(allUsefulSolutionsToProblem);
             }
         }
 
@@ -272,77 +247,20 @@ public class SliceSolver : MonoBehaviour
         sliceSolutions = FilterForIdenticalSolvers(sliceSolutions, toSolve);
 
         // Take any completely overlapping slices and reduce them
-        sliceSolutions = ReduceOverlappingSlices(sliceSolutions, toSolve);
+        // sliceSolutions = ReduceOverlappingSlices(sliceSolutions, toSolve);
 
         return sliceSolutions;
     }
 
-    public static List<SlicePositionData> RemoveUnbreakableFundamentals(List<SlicePositionData> toBreak)
-    {
-        List<SlicePositionData> remainingPositions = new List<SlicePositionData>();
-
-        for (int ii = 0; ii < toBreak.Count; ii++)
-        {
-            SlicePositionData curPosition = toBreak[ii];
-
-            if (curPosition.UnbreakableFundamental)
-            {
-                continue;
-            }
-
-            // Look through each other element and find unbreakable fundamentals
-            // Remove the coordinates from this set that are in each fundamental set
-            int removals = 0;
-            for (int jj = 0; jj < toBreak.Count; jj++)
-            {
-                if (ii == jj)
-                {
-                    continue;
-                }
-
-                SlicePositionData subPosition = toBreak[jj];
-                if (!subPosition.UnbreakableFundamental)
-                {
-                    continue;
-                }
-
-                for (int kk = 0; kk < curPosition.Positions.Count; kk++)
-                {
-                    if (subPosition.Positions.Contains(curPosition.Positions[kk]))
-                    {
-                        curPosition.Positions.RemoveAt(kk);
-                        removals++;
-                    }
-                }
-            }
-
-            if (removals > 0)
-            {
-                Debug.Log($"Removed {removals} fundamental elements, resulting in {curPosition}");
-            }
-
-            // Then if any positions are remaining, keep it
-            if (curPosition.Positions.Count > 0)
-            {
-                remainingPositions.Add(curPosition);
-            }
-            else
-            {
-                Debug.Log($"After removing fundamentals, there was nothing in {curPosition}.");
-            }
-        }
-
-        return remainingPositions;
-    }
-
     public static List<SlicePositionData> RemoveIdenticalSlices(List<SlicePositionData> toTrim)
     {
+        int initialRemaining = toTrim.Count;
         List<SlicePositionData> remaining = new List<SlicePositionData>(toTrim);
 
         for (int ii = remaining.Count - 1; ii >= 0; ii--)
         {
             SlicePositionData thisSlice = remaining[ii];
-            for (int kk = ii - 1; kk >= 0; kk--)
+            for (int kk = ii + 1; kk < remaining.Count; kk++)
             {
                 if (ii == kk)
                 {
@@ -355,10 +273,16 @@ public class SliceSolver : MonoBehaviour
                 {
                     // This is an identical slice! Remove it, retaining the other copy
                     // Debug.Log($"Found an identical copy of {comparisonSlice}; culling");
-                    remaining.RemoveAt(ii);
+                    remaining.RemoveAt(kk);
+                    kk--;
                     break;
                 }
             }
+        }
+
+        if (remaining.Count != initialRemaining)
+        {
+            Debug.Log($"Removed {initialRemaining - remaining.Count} identical slices. {remaining.Count} remain.");
         }
 
         return remaining;
@@ -590,16 +514,42 @@ public class SliceSolver : MonoBehaviour
         return reduced;
     }
 
-    public static IEnumerable<T[]> GetAllSubsets<T>(List<T> source)
+    private static void Swap<T>(List<T> list, int i, int j)
     {
-        // Shamefully stolen from Google's AI solver
-        // WARNING: BREAKS WITH SET SIZES OF SIZE 32 OR GREATER
-        // 1 << source.Count calculates 2^n efficiently
-        for (int i = 0; i < (1 << source.Count); i++)
+        T temp = list[i];
+        list[i] = list[j];
+        list[j] = temp;
+    }
+
+    public static IEnumerable<IEnumerable<T>> GeneratePermutations<T>(IEnumerable<T> items)
+    {
+        var list = items.ToList();
+        return GeneratePermutationsRecursive<T>(list, 0, list.Count - 1);
+    }
+
+    private static IEnumerable<IEnumerable<T>> GeneratePermutationsRecursive<T>(List<T> list, int start, int end)
+    {
+        if (start == end)
         {
-            yield return source
-                .Where((t, j) => (i & (1 << j)) != 0) // Check if the j-th bit is set in i
-                .ToArray();
+            // Base case: a full permutation is found
+            yield return new List<T>(list);
+        }
+        else
+        {
+            for (int i = start; i <= end; i++)
+            {
+                // Swap current element with the element at the 'start' index
+                Swap(list, start, i);
+
+                // Recurse for the remaining elements
+                foreach (var perm in GeneratePermutationsRecursive<T>(list, start + 1, end))
+                {
+                    yield return perm;
+                }
+
+                // Swap back (backtrack) to restore the original order for the next iteration
+                Swap(list, start, i);
+            }
         }
     }
 }

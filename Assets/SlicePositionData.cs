@@ -11,14 +11,13 @@ public class SlicePositionData
     public List<Vector2Int> Positions;
 
     public Color BaseColor;
-    public bool UnbreakableFundamental { get; set; } = false;
 
     public SlicePositionData()
     {
-
+        this.Positions = new List<Vector2Int>();
     }
 
-    public SlicePositionData(List<SlicePositionData> superSet)
+    public SlicePositionData(IEnumerable<SlicePositionData> superSet)
     {
         this.Positions = new List<Vector2Int>();
         bool colorSet = false;
@@ -182,5 +181,11 @@ public class SlicePositionData
 
         coordinateString.Append("}");
         return coordinateString.ToString();
+    }
+
+    public void AddPositions(IEnumerable<Vector2Int> positionsToAdd)
+    {
+        this.Positions.AddRange(positionsToAdd);
+        this.Positions = this.Positions.Distinct().ToList();
     }
 }
