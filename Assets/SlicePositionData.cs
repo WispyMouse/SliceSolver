@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -5,7 +6,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 
 [System.Serializable]
-public class SlicePositionData
+public class SlicePositionData : IComparable<SlicePositionData>
 {
     [SerializeField]
     public List<Vector2Int> Positions;
@@ -96,6 +97,11 @@ public class SlicePositionData
 
     public bool CanBePotentiallyUseful(SlicePositionData slice)
     {
+        if (slice.Positions.Count == 0)
+        {
+            return false;
+        }
+
         foreach (Vector2Int position in slice.Positions)
         {
             if (!this.Positions.Contains(position))
@@ -187,5 +193,18 @@ public class SlicePositionData
     {
         this.Positions.AddRange(positionsToAdd);
         this.Positions = this.Positions.Distinct().ToList();
+    }
+
+    public int CompareTo(SlicePositionData other)
+    {
+        if (this.Positions.Count == other.Positions.Count)
+        {
+            if (this.ContainsAll(other.Positions))
+            {
+                return 0;
+            }
+        }
+
+        return this.Positions.Count.CompareTo(other.Positions.Count);
     }
 }

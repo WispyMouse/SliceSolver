@@ -116,12 +116,12 @@ public class SliceSolver : MonoBehaviour
     // If we can identify any pieces that are always linked, we can reduce the amount of fundamental pieces
     // This filter is helpful for reconciling things like the "-" in the middle of an "8", which are two pieces always found together
     /// </summary>
-    public List<SlicePositionData> ReduceToPairedPositions(List<SlicePositionData> allFundamentals, List<SlicePositionData> toSolve)
+    public List<SlicePositionData> ReduceToPairedPositions(List<SlicePositionData> toPair, List<SlicePositionData> toSolve)
     {
-        Debug.Log($"Beginning linking of all fundamentals, size {allFundamentals.Count}");
+        Debug.Log($"Beginning linking of all pairs, size {toPair.Count}");
 
         List<SlicePositionData> currentLinkedPieces = new List<SlicePositionData>();
-        foreach (SlicePositionData fundamental in allFundamentals)
+        foreach (SlicePositionData fundamental in toPair)
         {
             List<SlicePositionData> problemsInvolvingFundamental = new List<SlicePositionData>(toSolve);
             for (int ii = toSolve.Count - 1; ii >= 0; ii--)
@@ -140,7 +140,7 @@ public class SliceSolver : MonoBehaviour
 
             List<Vector2Int> alwaysPresentCoordinates = new List<Vector2Int>(allPositionsInProblems);
 
-            Debug.Log($"For the fundemental {fundamental}, there are {allPositionsInProblems.Count} positions in problems involving this fundemental");
+            Debug.Log($"For the part {fundamental}, there are {allPositionsInProblems.Count} positions in problems involving this fundemental");
 
             foreach (SlicePositionData curToSolve in problemsInvolvingFundamental)
             {
@@ -160,6 +160,13 @@ public class SliceSolver : MonoBehaviour
                         alwaysPresentCoordinates.RemoveAt(ii);
                     }
                 }
+            }
+
+            if (alwaysPresentCoordinates.Count == fundamental.Positions.Count)
+            {
+                // If this has the same number of coordinates as are already in the set, they cannot be linked meaningfully
+                currentLinkedPieces.Add(fundamental);
+                continue;
             }
 
             Debug.Log($"For the fundemental {fundamental}, there appear to be {alwaysPresentCoordinates.Count} coordinates that always appear when it does");
@@ -221,7 +228,7 @@ public class SliceSolver : MonoBehaviour
                 List<SlicePositionData> allUsefulSolutionsToProblem = new List<SlicePositionData>();
                 List<SlicePositionData> solutionCompositePermutations = new List<SlicePositionData>();
 
-                foreach (IEnumerable<SlicePositionData> possibleCombination in GeneratePermutations<SlicePositionData>(usedSlices.ToArray()))
+                foreach (IEnumerable<SlicePositionData> possibleCombination in GetAllSubsetsWithRemoved<SlicePositionData>(usedSlices))
                 {
                     solutionCompositePermutations.Add(new SlicePositionData(possibleCombination));
                 }
@@ -232,22 +239,53 @@ public class SliceSolver : MonoBehaviour
                 {
                     sliceSolutions.AddRange(usefulSliceConcepts);
                 }
-
-                // Iterate over each of the solutions, checking for overlapping values
-                // Reduce to the smallest set
-                // allUsefulSolutionsToProblem = ReduceOverlappingSlices(allUsefulSolutionsToProblem, toSolve);
-                sliceSolutions.AddRange(allUsefulSolutionsToProblem);
             }
         }
 
         // We now have every possible solution for every possible entry
         // Check to see if we can prune any combination that can be made with other combination pieces
         sliceSolutions = RemoveIdenticalSlices(sliceSolutions);
-        sliceSolutions = ReduceRedundantSlices(sliceSolutions);
         sliceSolutions = FilterForIdenticalSolvers(sliceSolutions, toSolve);
 
-        // Take any completely overlapping slices and reduce them
+        List<SlicePositionData> smallestCompleteDataSet = new List<SlicePositionData>(sliceSolutions);
+        List<List<SlicePositionData>> allPossibleSets = null;
+
+        Task calculationTask = Task.Run(() => 
+        {
+            allPossibleSets = GetAllSubsetsWithRemoved(sliceSolutions);
+        });
+
+        await calculationTask;
+
+        foreach (List<SlicePositionData> slices in allPossibleSets)
+        {
+            bool canMakeEntireSet = true;
+
+            if (slices.Count > smallestCompleteDataSet.Count)
+            {
+                continue;
+            }
+
+            foreach (SlicePositionData problem in toSolve)
+            {
+                if (!problem.CanMakeShape(slices, out List<SlicePositionData> usefulSlices))
+                {
+                    canMakeEntireSet = false;
+                    continue;
+                }
+            }
+
+            if (canMakeEntireSet && slices.Count < smallestCompleteDataSet.Count)
+            {
+                smallestCompleteDataSet = slices;
+            }
+        }
+        sliceSolutions = smallestCompleteDataSet;
+
+        // sliceSolutions = ReduceRedundantSlices(sliceSolutions);
         // sliceSolutions = ReduceOverlappingSlices(sliceSolutions, toSolve);
+
+        // Take any completely overlapping slices and reduce them
 
         return sliceSolutions;
     }
@@ -322,7 +360,7 @@ public class SliceSolver : MonoBehaviour
                 if (mySlice.CanMakeShape(encompassedSlices, out List<SlicePositionData> usedSlices))
                 {
                     // Yes! That means this can be removed
-                    Debug.Log($"Can make {mySlice} with composite parts, marking as not necessary.");
+                    // Debug.Log($"Can make {mySlice} with composite parts, marking as not necessary.");
                     anythingChanged = true;
                     remainingSlices.RemoveAt(ii);
                     break;
@@ -350,18 +388,18 @@ public class SliceSolver : MonoBehaviour
         do
         {
             anythingChanged = false;
-            for (int ii = solutionSlices.Count - 1; ii >= 0; ii--)
+            for (int ii = remaining.Count - 1; ii >= 0; ii--)
             {
-                SlicePositionData curSlice = solutionSlices[ii];
+                SlicePositionData curSlice = remaining[ii];
 
-                for (int jj = solutionSlices.Count - 1; jj >= 0; jj--)
+                for (int jj = remaining.Count - 1; jj >= 0; jj--)
                 {
                     if (ii == jj)
                     {
                         continue;
                     }
 
-                    SlicePositionData subSlice = solutionSlices[jj];
+                    SlicePositionData subSlice = remaining[jj];
 
                     // Check that our slice is a superset of the smaller slice
                     if (!curSlice.ContainsAll(subSlice))
@@ -385,7 +423,7 @@ public class SliceSolver : MonoBehaviour
                     if (!anySmallerSituationsFound)
                     {
                         Debug.Log($"Set {curSlice} is a superset of {subSlice}, and the subset has no unique solutions, so trimming it.");
-                        solutionSlices.RemoveAt(jj);
+                        remaining.RemoveAt(jj);
                         anythingChanged = true;
                         break;
                     }
@@ -396,7 +434,6 @@ public class SliceSolver : MonoBehaviour
                     break;
                 }
             }
-            anythingChanged = false;
         } while (anythingChanged);
 
         return remaining;
@@ -514,42 +551,42 @@ public class SliceSolver : MonoBehaviour
         return reduced;
     }
 
-    private static void Swap<T>(List<T> list, int i, int j)
+    public static List<List<T>> GetAllSubsetsWithRemoved<T>(List<T> originalList)
     {
-        T temp = list[i];
-        list[i] = list[j];
-        list[j] = temp;
+        // Sort the list to handle duplicates correctly during generation
+        originalList.Sort();
+        List<List<T>> result = new List<List<T>>();
+        List<T> currentSubset = new List<T>();
+
+        FindSubsetsRecursive(originalList, 0, currentSubset, result);
+
+        // Optional: Remove the empty set if not required
+        // result.RemoveAll(subset => subset.Count == 0); 
+
+        return result;
     }
 
-    public static IEnumerable<IEnumerable<T>> GeneratePermutations<T>(IEnumerable<T> items)
+    private static void FindSubsetsRecursive<T>(List<T> arr, int startIndex, List<T> currentSubset, List<List<T>> result)
     {
-        var list = items.ToList();
-        return GeneratePermutationsRecursive<T>(list, 0, list.Count - 1);
-    }
+        // Add the current subset to the result list (includes empty set)
+        result.Add(new List<T>(currentSubset));
 
-    private static IEnumerable<IEnumerable<T>> GeneratePermutationsRecursive<T>(List<T> list, int start, int end)
-    {
-        if (start == end)
+        for (int i = startIndex; i < arr.Count; i++)
         {
-            // Base case: a full permutation is found
-            yield return new List<T>(list);
-        }
-        else
-        {
-            for (int i = start; i <= end; i++)
+            // Skip duplicates at the same recursion level
+            if (i > startIndex && EqualityComparer<T>.Default.Equals(arr[i], arr[i - 1]))
             {
-                // Swap current element with the element at the 'start' index
-                Swap(list, start, i);
-
-                // Recurse for the remaining elements
-                foreach (var perm in GeneratePermutationsRecursive<T>(list, start + 1, end))
-                {
-                    yield return perm;
-                }
-
-                // Swap back (backtrack) to restore the original order for the next iteration
-                Swap(list, start, i);
+                continue;
             }
+
+            // Include the current element
+            currentSubset.Add(arr[i]);
+
+            // Recurse with the next index
+            FindSubsetsRecursive(arr, i + 1, currentSubset, result);
+
+            // Backtrack: remove the last element to explore other combinations
+            currentSubset.RemoveAt(currentSubset.Count - 1);
         }
     }
 }
