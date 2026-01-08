@@ -6,15 +6,22 @@ using Unity.VisualScripting;
 using UnityEditor.ShaderGraph.Internal;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.UI;
 
 public class SliceSolver : MonoBehaviour
 {
+
     public float CoordinatePositionMultiplier = 50f;
     public SliceVisualizer SliceVisualizerPF;
 
     public Transform IntegratedSolutionsRoot;
 
     public List<Color> CandidateColors = new List<Color>();
+
+    public readonly List<SliceVisualizer> FitTogetherVisualizers = new List<SliceVisualizer>();
+    public readonly List<SlicePositionData> SlicesToSolve = new List<SlicePositionData>();
+    Dictionary<SlicePositionData, SliceVisualizer> solutionToVisualizer = new Dictionary<SlicePositionData, SliceVisualizer>();
+    readonly Dictionary<SlicePositionData, List<SlicePositionData>> SliceSolutions = new Dictionary<SlicePositionData, List<SlicePositionData>>();
 
     public async Task StartSolvingForSlices(List<SlicePositionData> problemsToSolve)
     {
@@ -85,6 +92,7 @@ public class SliceSolver : MonoBehaviour
 
     public void PresentResults(List<SlicePositionData> solutionSlices, List<SlicePositionData> slicesToSolve, Dictionary<SlicePositionData, List<SlicePositionData>> sliceSolutions)
     {
+        this.SliceSolutions.AddRange(sliceSolutions);
         for (int ii = 0; ii < solutionSlices.Count; ii++)
         {
             SlicePositionData solutionSet = solutionSlices[ii];
@@ -92,6 +100,9 @@ public class SliceSolver : MonoBehaviour
             SliceVisualizer newVisualizer = Instantiate(this.SliceVisualizerPF, this.transform);
             newVisualizer.VisualizeList(solutionSet, this.CoordinatePositionMultiplier);
             newVisualizer.gameObject.SetActive(true);
+            newVisualizer.RecalculateCall = this.RefreshSolver;
+            solutionToVisualizer.Add(solutionSet, newVisualizer);
+            newVisualizer.ShapeCount.enabled = true;
         }
 
         foreach (SlicePositionData toSolve in slicesToSolve)
@@ -106,10 +117,52 @@ public class SliceSolver : MonoBehaviour
 
             foreach (SlicePositionData solutionPiece in sortedSolutions)
             {
+                solutionToVisualizer[solutionPiece].AssociatedPixels.Add(newVisualizer);
                 newVisualizer.IntegrateSolution(solutionPiece);
+            }
+
+            FitTogetherVisualizers.Add(newVisualizer);
+        }
+
+        foreach (SliceVisualizer visualizer in this.solutionToVisualizer.Values)
+        {
+            visualizer.ShapeCount.text = visualizer.AssociatedPixels.Count.ToString();
+            visualizer.SetColor();
+        }
+    }
+
+    public void UpdateResults(Dictionary<SlicePositionData, List<SlicePositionData>> sliceSolutions)
+    {
+        foreach (SliceVisualizer visualizers in this.FitTogetherVisualizers)
+        {
+            visualizers.Clear();
+        }
+        
+        foreach (SliceVisualizer visualizer in this.FitTogetherVisualizers)
+        {
+            if (sliceSolutions.TryGetValue(visualizer.SelectedPixels, out List<SlicePositionData> data))
+            {
+                List<SlicePositionData> sortedSolutions = new List<SlicePositionData>(data);
+
+                for (int ii = sortedSolutions.Count - 1; ii >= 0; ii--)
+                {
+                    if (!solutionToVisualizer[data[ii]].IsOn)
+                    {
+                        sortedSolutions.RemoveAt(ii);
+                    }
+                }
+
+                // Sort so that the largest slice is colored first, then the smaller slice on top
+                sortedSolutions.Sort((SlicePositionData a, SlicePositionData b) => b.Positions.Count.CompareTo(a.Positions.Count));
+
+                foreach (SlicePositionData solutionPiece in sortedSolutions)
+                {
+                    visualizer.IntegrateSolution(solutionPiece);
+                }
             }
         }
     }
+
 
     /// <summary>
     // Looking at every fundamental and every position to solve, are there any elements that are *always* tied together?
@@ -250,6 +303,7 @@ public class SliceSolver : MonoBehaviour
         List<SlicePositionData> smallestCompleteDataSet = new List<SlicePositionData>(sliceSolutions);
         List<List<SlicePositionData>> allPossibleSets = null;
 
+        /*
         Task calculationTask = Task.Run(() => 
         {
             allPossibleSets = GetAllSubsetsWithRemoved(sliceSolutions);
@@ -281,6 +335,7 @@ public class SliceSolver : MonoBehaviour
             }
         }
         sliceSolutions = smallestCompleteDataSet;
+        */
 
         // sliceSolutions = ReduceRedundantSlices(sliceSolutions);
         // sliceSolutions = ReduceOverlappingSlices(sliceSolutions, toSolve);
@@ -360,7 +415,7 @@ public class SliceSolver : MonoBehaviour
                 if (mySlice.CanMakeShape(encompassedSlices, out List<SlicePositionData> usedSlices))
                 {
                     // Yes! That means this can be removed
-                    // Debug.Log($"Can make {mySlice} with composite parts, marking as not necessary.");
+                    Debug.Log($"Can make {mySlice} with composite parts, marking as not necessary.");
                     anythingChanged = true;
                     remainingSlices.RemoveAt(ii);
                     break;
@@ -588,5 +643,34 @@ public class SliceSolver : MonoBehaviour
             // Backtrack: remove the last element to explore other combinations
             currentSubset.RemoveAt(currentSubset.Count - 1);
         }
+    }
+
+    public void RefreshSolver()
+    {
+        UpdateResults(this.SliceSolutions);
+    }
+
+    public void AllOnAllOff()
+    {
+        bool allAlreadyOff = true;
+        foreach (SliceVisualizer solutionPieces in this.solutionToVisualizer.Values)
+        {
+            if (solutionPieces.IsOn)
+            {
+                allAlreadyOff = false;
+            }
+
+            solutionPieces.ToggleVisual(false);
+        }
+
+        if (allAlreadyOff)
+        {
+            foreach (SliceVisualizer solutionPieces in this.solutionToVisualizer.Values)
+            {
+                solutionPieces.ToggleVisual(true);
+            }
+        }
+
+        this.RefreshSolver();
     }
 }
