@@ -5,6 +5,7 @@ using TMPro;
 using Unity.VisualScripting;
 using UnityEditor.ShaderGraph.Internal;
 using UnityEngine;
+using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.Rendering;
 using UnityEngine.UI;
 
@@ -61,7 +62,7 @@ public class SliceSolver : MonoBehaviour
         Debug.Log($"Program complete");
     }
 
-    public bool CanMakeAllShapes(List<SlicePositionData> slicesToMake, List<SlicePositionData> parts, out Dictionary<SlicePositionData, List<SlicePositionData>> sliceToSolutions)
+    public static bool CanMakeAllShapes(List<SlicePositionData> slicesToMake, List<SlicePositionData> parts, out Dictionary<SlicePositionData, List<SlicePositionData>> sliceToSolutions)
     {
         sliceToSolutions = new Dictionary<SlicePositionData, List<SlicePositionData>>();
 
@@ -126,13 +127,27 @@ public class SliceSolver : MonoBehaviour
 
         foreach (SliceVisualizer visualizer in this.solutionToVisualizer.Values)
         {
-            visualizer.ShapeCount.text = visualizer.AssociatedPixels.Count.ToString();
             visualizer.SetColor();
         }
     }
 
     public void UpdateResults(Dictionary<SlicePositionData, List<SlicePositionData>> sliceSolutions)
     {
+        HashSet<Vector2Int> selectedPixels = new HashSet<Vector2Int>();
+
+        foreach (SliceVisualizer visualizer in this.solutionToVisualizer.Values)
+        {
+            if (visualizer.IsOn)
+            {
+                selectedPixels.AddRange(visualizer.SelectedPixels.Positions);
+            }
+        }
+
+        foreach (SliceVisualizer visualizer in this.solutionToVisualizer.Values)
+        {
+            visualizer.SetColor(selectedPixels);
+        }
+
         foreach (SliceVisualizer visualizers in this.FitTogetherVisualizers)
         {
             visualizers.Clear();
@@ -300,8 +315,9 @@ public class SliceSolver : MonoBehaviour
         sliceSolutions = RemoveIdenticalSlices(sliceSolutions);
         sliceSolutions = FilterForIdenticalSolvers(sliceSolutions, toSolve);
 
-        List<SlicePositionData> smallestCompleteDataSet = new List<SlicePositionData>(sliceSolutions);
-        List<List<SlicePositionData>> allPossibleSets = null;
+
+        // List<SlicePositionData> smallestCompleteDataSet = new List<SlicePositionData>(sliceSolutions);
+        // List<List<SlicePositionData>> allPossibleSets = null;
 
         /*
         Task calculationTask = Task.Run(() => 
@@ -660,14 +676,14 @@ public class SliceSolver : MonoBehaviour
                 allAlreadyOff = false;
             }
 
-            solutionPieces.ToggleVisual(false);
+            solutionPieces.ToggleVisualInner(false);
         }
 
         if (allAlreadyOff)
         {
             foreach (SliceVisualizer solutionPieces in this.solutionToVisualizer.Values)
             {
-                solutionPieces.ToggleVisual(true);
+                solutionPieces.ToggleVisualInner(true);
             }
         }
 

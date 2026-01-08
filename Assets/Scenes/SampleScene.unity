@@ -1586,15 +1586,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4271449741906307696, guid: 8952d1349b6061943bbe76da92113b78, type: 3}
       propertyPath: EnabledColorMax.b
-      value: 0.29172
+      value: 0.4079412
       objectReference: {fileID: 0}
     - target: {fileID: 4271449741906307696, guid: 8952d1349b6061943bbe76da92113b78, type: 3}
       propertyPath: EnabledColorMax.g
-      value: 0.85800004
+      value: 0.85882354
       objectReference: {fileID: 0}
     - target: {fileID: 4271449741906307696, guid: 8952d1349b6061943bbe76da92113b78, type: 3}
       propertyPath: EnabledColorMax.r
-      value: 0.33087763
+      value: 0.4390366
       objectReference: {fileID: 0}
     - target: {fileID: 4271449741906307696, guid: 8952d1349b6061943bbe76da92113b78, type: 3}
       propertyPath: EnabledColorMin.a
@@ -1602,15 +1602,23 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4271449741906307696, guid: 8952d1349b6061943bbe76da92113b78, type: 3}
       propertyPath: EnabledColorMin.b
-      value: 0.68840045
+      value: 0.7484878
       objectReference: {fileID: 0}
     - target: {fileID: 4271449741906307696, guid: 8952d1349b6061943bbe76da92113b78, type: 3}
       propertyPath: EnabledColorMin.g
-      value: 0.8396226
+      value: 0.875
       objectReference: {fileID: 0}
     - target: {fileID: 4271449741906307696, guid: 8952d1349b6061943bbe76da92113b78, type: 3}
       propertyPath: EnabledColorMin.r
-      value: 0.67724276
+      value: 0.7385
+      objectReference: {fileID: 0}
+    - target: {fileID: 4271449741906307696, guid: 8952d1349b6061943bbe76da92113b78, type: 3}
+      propertyPath: ShapesForMaxColor
+      value: 5
+      objectReference: {fileID: 0}
+    - target: {fileID: 4271449741906307696, guid: 8952d1349b6061943bbe76da92113b78, type: 3}
+      propertyPath: ShapesForMinColor
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4271449741906307696, guid: 8952d1349b6061943bbe76da92113b78, type: 3}
       propertyPath: DisabledColorMax.a
