@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using TMPro;
 using Unity.VisualScripting;
@@ -23,6 +24,7 @@ public class SliceSolver : MonoBehaviour
     public readonly List<SlicePositionData> SlicesToSolve = new List<SlicePositionData>();
     Dictionary<SlicePositionData, SliceVisualizer> solutionToVisualizer = new Dictionary<SlicePositionData, SliceVisualizer>();
     readonly Dictionary<SlicePositionData, List<SlicePositionData>> SliceSolutions = new Dictionary<SlicePositionData, List<SlicePositionData>>();
+
 
     public async Task StartSolvingForSlices(List<SlicePositionData> problemsToSolve)
     {
@@ -62,7 +64,7 @@ public class SliceSolver : MonoBehaviour
         Debug.Log($"Program complete");
     }
 
-    public static bool CanMakeAllShapes(List<SlicePositionData> slicesToMake, List<SlicePositionData> parts, out Dictionary<SlicePositionData, List<SlicePositionData>> sliceToSolutions)
+    public static bool CanMakeAllShapes(List<SlicePositionData> slicesToMake, IEnumerable<SlicePositionData> parts, out Dictionary<SlicePositionData, List<SlicePositionData>> sliceToSolutions)
     {
         sliceToSolutions = new Dictionary<SlicePositionData, List<SlicePositionData>>();
 
@@ -326,6 +328,16 @@ public class SliceSolver : MonoBehaviour
         sliceSolutions = RemoveIdenticalSlices(sliceSolutions);
         sliceSolutions = FilterForIdenticalSolvers(sliceSolutions, toSolve);
 
+        HashSet<SlicePositionData> solutionPiecesToUse = new HashSet<SlicePositionData>();
+        foreach (IEnumerable<SlicePositionData> curSet in await GetAllSetsThatCanSolveAllProblemsAsync(toSolve, sliceSolutions, 5, 1))
+        {
+            foreach (SlicePositionData curSolutionSlice in curSet)
+            {
+                solutionPiecesToUse.Add(curSolutionSlice);
+            }
+        }
+        sliceSolutions = solutionPiecesToUse.ToList();
+
 
         // List<SlicePositionData> smallestCompleteDataSet = new List<SlicePositionData>(sliceSolutions);
         // List<List<SlicePositionData>> allPossibleSets = null;
@@ -402,7 +414,7 @@ public class SliceSolver : MonoBehaviour
 
         if (remaining.Count != initialRemaining)
         {
-            Debug.Log($"Removed {initialRemaining - remaining.Count} identical slices. {remaining.Count} remain.");
+            // Debug.Log($"Removed {initialRemaining - remaining.Count} identical slices. {remaining.Count} remain.");
         }
 
         return remaining;
@@ -474,7 +486,7 @@ public class SliceSolver : MonoBehaviour
             {
                 SlicePositionData curSlice = remaining[ii];
 
-                for (int jj = remaining.Count - 1; jj >= 0; jj--)
+                for (int jj = ii + 1; jj < remaining.Count; jj++)
                 {
                     if (ii == jj)
                     {
@@ -489,15 +501,20 @@ public class SliceSolver : MonoBehaviour
                         continue;
                     }
 
-                    // Now that we know it's a subset, check every problem for a
-                    // situation where the smaller slice is used in a way that the larger one isn't
+                    // curSlice contains all of subSlice, and we know it's not identical because that filter already ran
+                    // Check every problem that subSlice can be used in;
+                    // If there are zero problems where subSlice is part of a solution that curSlice isn't part of it,
+                    // then the subSlice must be entirely redundant
                     bool anySmallerSituationsFound = false;
                     foreach (SlicePositionData problem in problemsToSolve)
                     {
-                        if (!problem.ContainsAll(curSlice) && problem.ContainsAll(subSlice))
+                        if (problem.ContainsAll(subSlice))
                         {
-                            anySmallerSituationsFound = true;
-                            break;
+                            if (!problem.ContainsAll(curSlice))
+                            {
+                                anySmallerSituationsFound = true;
+                                break;
+                            }
                         }
                     }
 
@@ -506,8 +523,8 @@ public class SliceSolver : MonoBehaviour
                     {
                         // Debug.Log($"Set {curSlice} is a superset of {subSlice}, and the subset has no unique solutions, so trimming it.");
                         remaining.RemoveAt(jj);
+                        jj--;
                         anythingChanged = true;
-                        break;
                     }
                 }
 
@@ -737,5 +754,100 @@ public class SliceSolver : MonoBehaviour
         }
 
         return applicableProblems.Count;
+    }
+
+    /// <summary>
+    /// Generates all unique combinations of a fixed size (k) from a source collection.
+    /// Order of elements within a combination does not matter.
+    /// </summary>
+    public static IEnumerable<IEnumerable<T>> GetCombinations<T>(IEnumerable<T> source, int k)
+    {
+        // Convert to list to use index-based access, which is more efficient for this algorithm.
+        var list = source.ToList();
+
+        // Handle invalid input cases
+        if (k < 0 || k > list.Count)
+        {
+            yield break; // Return an empty enumeration
+        }
+
+        // The recursive core logic uses an enumerator (yield return)
+        foreach (var combination in CombinationsRecursive(list, k, 0, new T[k]))
+        {
+            yield return combination;
+        }
+    }
+
+    private static IEnumerable<IEnumerable<T>> CombinationsRecursive<T>(List<T> items, int k, int startIndex, T[] currentCombination)
+    {
+        // Base case: if k is 0, we have a complete combination.
+        if (k == 0)
+        {
+            // Return a new list/array with the current combination to avoid modification issues later
+            yield return currentCombination.ToArray();
+            yield break;
+        }
+
+        // Iterate through the remaining items
+        for (int i = startIndex; i <= items.Count - k; i++)
+        {
+            // Add the current item to the combination at the appropriate depth
+            currentCombination[currentCombination.Length - k] = items[i];
+
+            // Recurse to find the remaining k-1 items, starting from the next index (i+1)
+            // This prevents duplicate items within a combination and maintains order 
+            // (e.g., {1, 2} but not {2, 1})
+            foreach (var combination in CombinationsRecursive(items, k - 1, i + 1, currentCombination))
+            {
+                yield return combination;
+            }
+        }
+    }
+
+    private static async Task<List<IEnumerable<SlicePositionData>>> GetAllSetsThatCanSolveAllProblemsAsync(List<SlicePositionData> problems, IEnumerable<SlicePositionData> solutionSets, int setSize, int stopAfterSolveCount)
+    {
+        int combinationsConsidered = 0;
+        int successfulCandidates = 0;
+        List<IEnumerable<SlicePositionData>> validSets = new List<IEnumerable<SlicePositionData>>();
+
+        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
+        Task combinationTask = Task.Factory.StartNew(() =>
+        {
+            Thread.CurrentThread.Name = "GetAllSetsThatCanSolveAllProblems Thread";
+            foreach (IEnumerable<SlicePositionData> set in GetCombinations(solutionSets, setSize))
+            {
+                combinationsConsidered++;
+
+                if (!CanMakeAllShapes(problems, set, out _))
+                {
+                    continue;
+                }
+
+                successfulCandidates++;
+                validSets.Add(set);
+
+                if (successfulCandidates == stopAfterSolveCount)
+                {
+                    break;
+                }
+            }
+        }, cancellationToken: cancellationToken);
+
+        while (!combinationTask.IsCompleted)
+        {
+            Debug.Log($"Processed {combinationsConsidered} possible sets of combinations; {successfulCandidates} are successful");
+            await Task.Delay(300);
+
+            if (!Application.isPlaying)
+            {
+                cancellationTokenSource.Cancel();
+                return null;
+            }
+        }
+
+        Debug.Log($"Considered {combinationsConsidered} sets, found {validSets.Count} valid solution sets");
+
+        return validSets;
     }
 }

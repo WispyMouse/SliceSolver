@@ -285,8 +285,6 @@ MonoBehaviour:
     - {x: 0, y: 5}
     - {x: 3, y: 4}
     - {x: 3, y: 5}
-    - {x: 1, y: 6}
-    - {x: 2, y: 6}
     BaseColor: {r: 0, g: 0, b: 0, a: 0}
   - Positions:
     - {x: 1, y: 0}

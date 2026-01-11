@@ -10,6 +10,19 @@ public class SlicePositionData : IComparable<SlicePositionData>, IEquatable<Slic
 {
     [SerializeField]
     public List<Vector2Int> Positions;
+    private HashSet<Vector2Int> positionsHashSet
+    {
+        get
+        {
+            if (ReferenceEquals(_positionsHashSet, null))
+            {
+                _positionsHashSet = new HashSet<Vector2Int>(Positions);
+            }
+
+            return _positionsHashSet;
+        }
+    }
+    private HashSet<Vector2Int> _positionsHashSet { get; set; } = null;
 
     public Color BaseColor;
 
@@ -32,7 +45,8 @@ public class SlicePositionData : IComparable<SlicePositionData>, IEquatable<Slic
 
             this.Positions.AddRange(curData.Positions);
         }
-        this.Positions = this.Positions.Distinct().ToList();
+        this._positionsHashSet = new HashSet<Vector2Int>(this.Positions);
+        this.Positions = _positionsHashSet.ToList();
     }
 
     public bool CanMakeShape(IEnumerable<SlicePositionData> slices, out List<SlicePositionData> requiredSlices)
@@ -115,43 +129,22 @@ public class SlicePositionData : IComparable<SlicePositionData>, IEquatable<Slic
 
     public bool ContainsAll(SlicePositionData other)
     {
-        if (this.Positions.Count == 0)
+        if (this.positionsHashSet.Count == 0 && other.positionsHashSet.Count != 0)
         {
             return false;
         }
 
-        if (this.Positions.Count < other.Positions.Count)
-        {
-            return false;
-        }
-
-        foreach (Vector2Int coordinate in other.Positions)
-        {
-            if (!this.Positions.Contains(coordinate))
-            {
-                return false;
-            }
-        }
-
-        return true;
+        return this.positionsHashSet.IsSupersetOf(other.positionsHashSet);
     }
 
-    public bool ContainsAll(List<Vector2Int> other)
+    public bool ContainsAll(IEnumerable<Vector2Int> other)
     {
-        if (this.Positions.Count == 0)
+        if (this.positionsHashSet.Count == 0)
         {
             return false;
         }
 
-        foreach (Vector2Int coordinate in other)
-        {
-            if (!this.Positions.Contains(coordinate))
-            {
-                return false;
-            }
-        }
-
-        return true;
+        return this.positionsHashSet.IsSupersetOf(other);
     }
 
     public bool IsAlreadyInList(List<SlicePositionData> existing)
