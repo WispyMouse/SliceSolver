@@ -6,7 +6,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 
 [System.Serializable]
-public class SlicePositionData : IComparable<SlicePositionData>
+public class SlicePositionData : IComparable<SlicePositionData>, IEquatable<SlicePositionData>
 {
     [SerializeField]
     public List<Vector2Int> Positions;
@@ -206,5 +206,15 @@ public class SlicePositionData : IComparable<SlicePositionData>
         }
 
         return this.Positions.Count.CompareTo(other.Positions.Count);
+    }
+
+    public bool Equals(SlicePositionData other)
+    {
+        if (other == null)
+        {
+            return false;
+        }
+
+        return this.Positions.Count == other.Positions.Count && this.ContainsAll(other.Positions);
     }
 }

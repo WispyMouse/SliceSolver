@@ -31,6 +31,7 @@ public class SliceVisualizer : MonoBehaviour
     public RecalculateFunctionCall RecalculateCall;
 
     public bool IsOn { get; set; } = true;
+    int usedInSolutionsCount { get; set; } = 0;
 
     private void Awake()
     {
@@ -89,7 +90,7 @@ public class SliceVisualizer : MonoBehaviour
 
         this.IsOn = toValue;
 
-        this.SetColor();
+        this.SetColor(usedInSolutionsCount);
 
         foreach (SliceVisualizer dependentSlice in this.AssociatedPixels)
         {
@@ -97,28 +98,22 @@ public class SliceVisualizer : MonoBehaviour
         }
     }
 
-    public void SetColor(HashSet<Vector2Int> utilizedPixels = null)
+    public void SetColor(int usedInSolutionsCount)
     {
-        if (utilizedPixels == null || utilizedPixels.Count == 0)
+        this.usedInSolutionsCount = usedInSolutionsCount;
+
+        if (usedInSolutionsCount == 0)
         {
-            this.ButtonImage.color = IsOn ? Color.Lerp(this.EnabledColorMin, this.EnabledColorMax, Mathf.InverseLerp(this.ShapesForMinColor, this.ShapesForMaxColor, this.AssociatedPixels.Count))
-            : Color.Lerp(this.DisabledColorMin, this.DisabledColorMax, Mathf.InverseLerp(this.ShapesForMinColor, this.ShapesForMaxColor, this.AssociatedPixels.Count));
-            this.ShapeCount.text = this.AssociatedPixels.Count.ToString();
+            this.ButtonImage.color = IsOn ? Color.Lerp(this.EnabledColorMin, this.EnabledColorMax, Mathf.InverseLerp(this.ShapesForMinColor, this.ShapesForMaxColor, this.usedInSolutionsCount))
+            : Color.Lerp(this.DisabledColorMin, this.DisabledColorMax, Mathf.InverseLerp(this.ShapesForMinColor, this.ShapesForMaxColor, usedInSolutionsCount));
+            this.ShapeCount.text = this.usedInSolutionsCount.ToString();
             this.ShapeCount.transform.SetAsLastSibling();
         }
         else
         {
-            int notOverlappingPixels = this.SelectedPixels.Positions.Count;
-            foreach (Vector2Int pixel in utilizedPixels)
-            {
-                if (this.SelectedPixels.Positions.Contains(pixel))
-                {
-                    notOverlappingPixels--;
-                }
-            }
-            this.ButtonImage.color = IsOn ? Color.Lerp(this.EnabledColorMin, this.EnabledColorMax, Mathf.InverseLerp(this.ShapesForMinColor, this.ShapesForMaxColor, notOverlappingPixels))
-            : Color.Lerp(this.DisabledColorMin, this.DisabledColorMax, Mathf.InverseLerp(this.ShapesForMinColor, this.ShapesForMaxColor, notOverlappingPixels));
-            this.ShapeCount.text = notOverlappingPixels.ToString();
+            this.ButtonImage.color = IsOn ? Color.Lerp(this.EnabledColorMin, this.EnabledColorMax, Mathf.InverseLerp(this.ShapesForMinColor, this.ShapesForMaxColor, this.usedInSolutionsCount))
+            : Color.Lerp(this.DisabledColorMin, this.DisabledColorMax, Mathf.InverseLerp(this.ShapesForMinColor, this.ShapesForMaxColor, usedInSolutionsCount));
+            this.ShapeCount.text = this.usedInSolutionsCount.ToString();
             this.ShapeCount.transform.SetAsLastSibling();
         }
     }

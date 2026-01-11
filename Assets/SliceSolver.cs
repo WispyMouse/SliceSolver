@@ -127,25 +127,36 @@ public class SliceSolver : MonoBehaviour
 
         foreach (SliceVisualizer visualizer in this.solutionToVisualizer.Values)
         {
-            visualizer.SetColor();
+            if (sliceSolutions.TryGetValue(visualizer.SelectedPixels, out List<SlicePositionData> solutionsInvolvingThis))
+            {
+                visualizer.SetColor(solutionsInvolvingThis.Count);
+            }
+            else
+            {
+                visualizer.SetColor(0);
+            }
         }
     }
 
     public void UpdateResults(Dictionary<SlicePositionData, List<SlicePositionData>> sliceSolutions)
     {
-        HashSet<Vector2Int> selectedPixels = new HashSet<Vector2Int>();
+        List<SlicePositionData> onSolutionPieces = new List<SlicePositionData>();
+        List<SlicePositionData> allSolutionPieces = new List<SlicePositionData>();
 
         foreach (SliceVisualizer visualizer in this.solutionToVisualizer.Values)
         {
+            allSolutionPieces.Add(visualizer.SelectedPixels);
             if (visualizer.IsOn)
             {
-                selectedPixels.AddRange(visualizer.SelectedPixels.Positions);
+                onSolutionPieces.Add(visualizer.SelectedPixels);
             }
         }
 
         foreach (SliceVisualizer visualizer in this.solutionToVisualizer.Values)
         {
-            visualizer.SetColor(selectedPixels);
+            visualizer.SetColor(CountSolutionsWherePartIsNotRedundant(sliceSolutions.Keys, 
+                onSolutionPieces, allSolutionPieces,
+                visualizer.SelectedPixels, out _));
         }
 
         foreach (SliceVisualizer visualizers in this.FitTogetherVisualizers)
@@ -493,7 +504,7 @@ public class SliceSolver : MonoBehaviour
                     // If the smaller slice is entirely unimportant, trim it
                     if (!anySmallerSituationsFound)
                     {
-                        Debug.Log($"Set {curSlice} is a superset of {subSlice}, and the subset has no unique solutions, so trimming it.");
+                        // Debug.Log($"Set {curSlice} is a superset of {subSlice}, and the subset has no unique solutions, so trimming it.");
                         remaining.RemoveAt(jj);
                         anythingChanged = true;
                         break;
@@ -688,5 +699,43 @@ public class SliceSolver : MonoBehaviour
         }
 
         this.RefreshSolver();
+    }
+
+    public static int CountSolutionsWherePartIsNotRedundant(
+        IEnumerable<SlicePositionData> toSolve, 
+        List<SlicePositionData> otherSelectedSolutionPieces, IEnumerable<SlicePositionData> allSolutionPieces,
+        SlicePositionData toCheck, out List<SlicePositionData> applicableProblems)
+    {
+        applicableProblems = new List<SlicePositionData>();
+        List<SlicePositionData> selectedSolutionPiecesIncludingThis = new List<SlicePositionData>(otherSelectedSolutionPieces);
+        selectedSolutionPiecesIncludingThis.Add(toCheck);
+
+        foreach (SlicePositionData curSolve in toSolve)
+        {
+            // Can we make this shape, with access to all solution pieces?
+            if (!curSolve.CanMakeShape(allSolutionPieces, out List<SlicePositionData> usedSlices))
+            {
+                // Can't make this shape, doesn't count
+                continue;
+            }
+
+            // Can make this shape, but does it include our current slice?
+            if (!usedSlices.Contains(toCheck))
+            {
+                continue;
+            }
+
+            // Using our selected pieces, can we make this shape? If we can, check to make sure
+            // that we *can't* make this shape *without* this piece
+            if (curSolve.CanMakeShape(selectedSolutionPiecesIncludingThis, out _) && curSolve.CanMakeShape(otherSelectedSolutionPieces, out _))
+            {
+                // If we can make this shape using the selected pieces without this, it must be redundant
+                continue;
+            }
+
+            applicableProblems.Add(curSolve);
+        }
+
+        return applicableProblems.Count;
     }
 }
